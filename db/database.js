@@ -17,6 +17,16 @@ db.pragma('foreign_keys = ON');
 const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
 db.exec(schema);
 
+// Migrations légères pour les bases existantes (CREATE IF NOT EXISTS n'ajoute
+// pas les colonnes manquantes aux tables déjà créées).
+function ajouterColonneSiAbsente(table, colonne, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === colonne)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${colonne} ${definition}`);
+  }
+}
+ajouterColonneSiAbsente('utilisateurs', 'fuseau_horaire', "TEXT NOT NULL DEFAULT 'Europe/Paris'");
+
 // Activités préremplies à la création de chaque compte.
 const ACTIVITES_PAR_DEFAUT = [
   { nom: 'Consultation digitale', couleur: '#3b82f6' },

@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const { db, creerActivitesParDefaut } = require('../db/database');
 const { exigerAuth } = require('../middleware/auth');
 const { estConnecte } = require('../services/googleCalendar');
+const { estFuseauValide, FUSEAUX_USUELS } = require('../services/temps');
 
 const router = express.Router();
 
@@ -62,10 +63,28 @@ router.post('/logout', (req, res) => {
 // Utilisateur courant + état de la connexion Google
 router.get('/me', exigerAuth, (req, res) => {
   const u = db
-    .prepare('SELECT id, nom, email, google_calendar_id, date_creation FROM utilisateurs WHERE id = ?')
+    .prepare('SELECT id, nom, email, google_calendar_id, fuseau_horaire, date_creation FROM utilisateurs WHERE id = ?')
     .get(req.session.utilisateurId);
   if (!u) return res.status(401).json({ erreur: 'Session invalide.' });
-  res.json({ ...u, google_connecte: estConnecte(u.id) });
+  res.json({ ...u, google_connecte: estConnecte(u.id), fuseaux_usuels: FUSEAUX_USUELS });
+});
+
+// Mise à jour du profil (nom + fuseau horaire)
+router.put('/profil', exigerAuth, (req, res) => {
+  const { nom, fuseau_horaire } = req.body || {};
+  const u = db.prepare('SELECT * FROM utilisateurs WHERE id = ?').get(req.session.utilisateurId);
+  if (!u) return res.status(401).json({ erreur: 'Session invalide.' });
+
+  let fuseau = u.fuseau_horaire;
+  if (fuseau_horaire !== undefined) {
+    if (!estFuseauValide(fuseau_horaire)) {
+      return res.status(400).json({ erreur: 'Fuseau horaire invalide.' });
+    }
+    fuseau = fuseau_horaire;
+  }
+  const nomFinal = nom && nom.trim() ? nom.trim() : u.nom;
+  db.prepare('UPDATE utilisateurs SET nom = ?, fuseau_horaire = ? WHERE id = ?').run(nomFinal, fuseau, u.id);
+  res.json({ id: u.id, nom: nomFinal, fuseau_horaire: fuseau });
 });
 
 module.exports = router;

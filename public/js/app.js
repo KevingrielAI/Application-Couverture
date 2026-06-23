@@ -15,6 +15,27 @@ function echapper(s) {
   );
 }
 
+function fuseau() {
+  return (utilisateur && utilisateur.fuseau_horaire) || 'Europe/Paris';
+}
+
+// Formate un instant ISO dans le fuseau de l'utilisateur.
+function fmtHeure(iso) {
+  return new Date(iso).toLocaleString('fr-FR', {
+    dateStyle: 'short', timeStyle: 'short', timeZone: fuseau(),
+  });
+}
+
+// Décompose un instant ISO en { date:'AAAA-MM-JJ', heure:'HH:MM' } dans le fuseau utilisateur.
+function partsDansFuseau(iso) {
+  const p = new Intl.DateTimeFormat('en-CA', {
+    timeZone: fuseau(), hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  }).formatToParts(new Date(iso)).reduce((a, x) => ((a[x.type] = x.value), a), {});
+  const heure = p.hour === '24' ? '00' : p.hour;
+  return { date: `${p.year}-${p.month}-${p.day}`, heure: `${heure}:${p.minute}` };
+}
+
 function toast(msg, type = '') {
   const t = $('#toast');
   t.textContent = msg;
@@ -59,6 +80,38 @@ $('#btn-logout').addEventListener('click', async () => {
   location.reload();
 });
 
+// ===================== RÉGLAGES (profil + fuseau) =====================
+$('#btn-reglages').addEventListener('click', () => {
+  const usuels = (utilisateur.fuseaux_usuels || ['Europe/Paris', 'UTC']);
+  const actuel = fuseau();
+  const liste = usuels.includes(actuel) ? usuels : [actuel, ...usuels];
+  const opts = liste.map((tz) => `<option value="${tz}" ${tz === actuel ? 'selected' : ''}>${tz}</option>`).join('');
+  ouvrirModale('Réglages', `
+    <form id="form-reglages">
+      <div class="champ"><label>Nom</label><input name="nom" value="${echapper(utilisateur.nom)}" /></div>
+      <div class="champ">
+        <label>Fuseau horaire</label>
+        <select name="fuseau_horaire">${opts}</select>
+        <small style="color:#64748b">Utilisé pour interpréter vos horaires et les envoyer à Google Calendar.</small>
+      </div>
+      <div class="modale-actions">
+        <button type="button" class="btn btn-secondaire" onclick="fermerModale()">Annuler</button>
+        <button type="submit" class="btn btn-principal">Enregistrer</button>
+      </div>
+    </form>`);
+  $('#form-reglages').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await API.put('/api/auth/profil', {
+      nom: e.target.nom.value.trim(),
+      fuseau_horaire: e.target.fuseau_horaire.value,
+    });
+    fermerModale();
+    await rafraichirUtilisateur();
+    if (calendrier) calendrier.setOption('timeZone', fuseau());
+    toast('Réglages enregistrés.', 'succes');
+  });
+});
+
 // ===================== NAVIGATION =====================
 $$('.lien-nav').forEach((l) =>
   l.addEventListener('click', () => allerPage(l.dataset.page))
@@ -69,6 +122,7 @@ function allerPage(page) {
   $$('.page').forEach((p) => (p.style.display = 'none'));
   $('#page-' + page).style.display = 'block';
   if (page === 'agenda') chargerAgenda();
+  if (page === 'rdv') chargerTableauRdv();
   if (page === 'contacts') chargerContacts();
   if (page === 'activites') chargerActivites();
   if (page === 'nouveau') preparerNouveauRdv();
@@ -263,30 +317,27 @@ function reinitVerification() {
   $(sel).addEventListener('change', reinitVerification)
 );
 
-// Construit une date ISO locale à partir de date + heure.
-function isoLocal(dateStr, heureStr) {
-  if (!dateStr || !heureStr) return null;
-  const d = new Date(`${dateStr}T${heureStr}:00`);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}
-
+// Lit le créneau saisi sous forme d'heure murale (interprétée côté serveur
+// dans le fuseau de l'utilisateur).
 function lireCreneau() {
-  const debut = isoLocal($('#rdv-date').value, $('#rdv-debut').value);
-  const fin = isoLocal($('#rdv-date').value, $('#rdv-fin').value);
-  return { debut, fin };
-}
-
-function fmtHeure(iso) {
-  return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+  return {
+    date: $('#rdv-date').value,
+    heure_debut: $('#rdv-debut').value,
+    heure_fin: $('#rdv-fin').value,
+  };
 }
 
 $('#btn-verifier').addEventListener('click', async () => {
   if (!utilisateur.google_connecte) {
     return toast('Connectez d’abord votre Google Calendar.', 'erreur');
   }
-  const { debut, fin } = lireCreneau();
-  if (!debut || !fin) return toast('Renseignez date, début et fin.', 'erreur');
-  if (new Date(fin) <= new Date(debut)) return toast('La fin doit être après le début.', 'erreur');
+  const creneau = lireCreneau();
+  if (!creneau.date || !creneau.heure_debut || !creneau.heure_fin) {
+    return toast('Renseignez date, début et fin.', 'erreur');
+  }
+  if (creneau.heure_fin <= creneau.heure_debut) {
+    return toast('La fin doit être après le début.', 'erreur');
+  }
 
   const zone = $('#zone-resultat');
   zone.className = 'zone-resultat vide';
@@ -294,9 +345,9 @@ $('#btn-verifier').addEventListener('click', async () => {
   $('#btn-creer-rdv').disabled = true;
 
   try {
-    const r = await API.post('/api/rendezvous/verifier', { heure_debut: debut, heure_fin: fin });
+    const r = await API.post('/api/rendezvous/verifier', creneau);
     if (r.libre) {
-      verifValide = { heure_debut: debut, heure_fin: fin };
+      verifValide = creneau;
       zone.className = 'zone-resultat libre';
       zone.innerHTML = `<strong>✅ Créneau libre</strong><p>Plage protégée respectée (tampon de ${r.tampon_minutes} min avant/après). Vous pouvez créer le rendez-vous.</p>`;
       $('#btn-creer-rdv').disabled = false;
@@ -327,11 +378,11 @@ $('#btn-verifier').addEventListener('click', async () => {
 });
 
 window.appliquerSuggestion = function (debutISO, finISO) {
-  const d = new Date(debutISO), f = new Date(finISO);
-  const pad = (n) => String(n).padStart(2, '0');
-  $('#rdv-date').value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  $('#rdv-debut').value = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  $('#rdv-fin').value = `${pad(f.getHours())}:${pad(f.getMinutes())}`;
+  const d = partsDansFuseau(debutISO);
+  const f = partsDansFuseau(finISO);
+  $('#rdv-date').value = d.date;
+  $('#rdv-debut').value = d.heure;
+  $('#rdv-fin').value = f.heure;
   reinitVerification();
   $('#btn-verifier').click();
 };
@@ -345,6 +396,7 @@ $('#btn-creer-rdv').addEventListener('click', async () => {
   try {
     await API.post('/api/rendezvous', {
       contact_id: Number(contactId),
+      date: verifValide.date,
       heure_debut: verifValide.heure_debut,
       heure_fin: verifValide.heure_fin,
       notes: $('#rdv-notes').value.trim(),
@@ -364,6 +416,76 @@ $('#btn-creer-rdv').addEventListener('click', async () => {
   }
 });
 
+// ===================== TABLEAU DE BORD RENDEZ-VOUS =====================
+let rdvTimer = null;
+['#filtre-rdv-statut', '#filtre-rdv-activite'].forEach((s) =>
+  $(s).addEventListener('change', chargerTableauRdv)
+);
+$('#recherche-rdv').addEventListener('input', () => {
+  clearTimeout(rdvTimer);
+  rdvTimer = setTimeout(chargerTableauRdv, 250);
+});
+
+const COULEURS_STATUT = {
+  'Planifié': '#3b82f6', 'Confirmé': '#16a34a', 'Complété': '#64748b', 'Annulé': '#dc2626',
+};
+
+async function chargerTableauRdv() {
+  await chargerListeActivites();
+  remplirSelectActivites($('#filtre-rdv-activite'), 'Toutes les activités');
+  const params = new URLSearchParams();
+  const act = $('#filtre-rdv-activite').value;
+  if (act) params.set('activite_id', act);
+  let rdvs = await API.get('/api/rendezvous?' + params.toString());
+
+  const statut = $('#filtre-rdv-statut').value;
+  if (statut) rdvs = rdvs.filter((r) => r.statut === statut);
+  const q = $('#recherche-rdv').value.trim().toLowerCase();
+  if (q) {
+    rdvs = rdvs.filter((r) =>
+      `${r.contact_prenom || ''} ${r.contact_nom || ''} ${r.activite_nom || ''}`.toLowerCase().includes(q)
+    );
+  }
+  // Plus récents d'abord.
+  rdvs.sort((a, b) => new Date(b.heure_debut) - new Date(a.heure_debut));
+
+  $('#liste-rdv').innerHTML = rdvs.map((r) => {
+    const d = partsDansFuseau(r.heure_debut);
+    const fdeb = new Date(r.heure_debut).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: fuseau() });
+    const ffin = new Date(r.heure_fin).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: fuseau() });
+    const nom = `${r.contact_prenom || ''} ${r.contact_nom || ''}`.trim() || '(contact supprimé)';
+    return `<tr>
+      <td>${d.date}</td>
+      <td>${fdeb} – ${ffin}</td>
+      <td>${echapper(nom)}</td>
+      <td>${r.activite_nom ? `<span class="pastille" style="background:${echapper(r.activite_couleur)}"></span>${echapper(r.activite_nom)}` : '—'}</td>
+      <td><span class="badge" style="background:${COULEURS_STATUT[r.statut]}22;color:${COULEURS_STATUT[r.statut]}">${r.statut}</span></td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-secondaire btn-mini" onclick="changerStatutRapide(${r.id},'${r.statut}')">Statut</button>
+        <button class="btn btn-danger btn-mini" onclick="supprimerRdv(${r.id})">Suppr.</button>
+      </td>
+    </tr>`;
+  }).join('') ||
+    '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:24px">Aucun rendez-vous.</td></tr>';
+}
+
+window.changerStatutRapide = function (id, statutActuel) {
+  const opts = ['Planifié', 'Confirmé', 'Complété', 'Annulé']
+    .map((s) => `<option value="${s}" ${s === statutActuel ? 'selected' : ''}>${s}</option>`).join('');
+  ouvrirModale('Changer le statut', `
+    <div class="champ"><label>Statut</label><select id="select-statut-rapide">${opts}</select></div>
+    <div class="modale-actions">
+      <button class="btn btn-secondaire" onclick="fermerModale()">Annuler</button>
+      <button class="btn btn-principal" id="btn-valider-statut">Enregistrer</button>
+    </div>`);
+  $('#btn-valider-statut').addEventListener('click', async () => {
+    await API.put(`/api/rendezvous/${id}/statut`, { statut: $('#select-statut-rapide').value });
+    fermerModale();
+    chargerTableauRdv();
+    toast('Statut mis à jour.', 'succes');
+  });
+};
+
 // ===================== AGENDA =====================
 $('#filtre-agenda-activite').addEventListener('change', () => calendrier && calendrier.refetchEvents());
 
@@ -373,6 +495,7 @@ async function chargerAgenda() {
     calendrier = new FullCalendar.Calendar($('#calendrier'), {
       initialView: 'timeGridWeek',
       locale: 'fr',
+      timeZone: fuseau(),
       firstDay: 1,
       nowIndicator: true,
       slotMinTime: '07:00:00',
@@ -432,7 +555,8 @@ window.supprimerRdv = async function (id) {
   if (!confirm('Supprimer ce rendez-vous ? Il sera aussi retiré de Google Calendar.')) return;
   await API.del('/api/rendezvous/' + id);
   fermerModale();
-  calendrier.refetchEvents();
+  if (calendrier) calendrier.refetchEvents();
+  if ($('#page-rdv').style.display !== 'none') chargerTableauRdv();
   toast('Rendez-vous supprimé.');
 };
 

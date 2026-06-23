@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS utilisateurs (
   mot_de_passe_hash   TEXT    NOT NULL,
   google_token        TEXT,              -- JSON des tokens OAuth (access + refresh)
   google_calendar_id  TEXT,              -- calendrier ciblé (par défaut "primary")
+  fuseau_horaire      TEXT    NOT NULL DEFAULT 'Europe/Paris',
   date_creation       TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 

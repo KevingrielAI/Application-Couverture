@@ -1,0 +1,12 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.env
+data
+*.sqlite
+*.sqlite3
+*.db
+*.log
+.DS_Store
+tests

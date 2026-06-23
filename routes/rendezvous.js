@@ -15,6 +15,7 @@ const {
   evenementsEnConflit,
   prochainsCreneauxLibres,
 } = require('../services/creneaux');
+const { murEnUTC, FUSEAU_DEFAUT } = require('../services/temps');
 
 const router = express.Router();
 router.use(exigerAuth);
@@ -25,23 +26,48 @@ function valideISO(s) {
   return !Number.isNaN(d.getTime());
 }
 
+function fuseauUtilisateur(uid) {
+  const r = db.prepare('SELECT fuseau_horaire FROM utilisateurs WHERE id = ?').get(uid);
+  return (r && r.fuseau_horaire) || FUSEAU_DEFAUT;
+}
+
+// Résout le créneau en instants UTC à partir du corps de requête.
+// Accepte l'heure murale { date:'AAAA-MM-JJ', heure_debut:'HH:MM', heure_fin:'HH:MM' }
+// interprétée dans le fuseau de l'utilisateur, ou des ISO complets (rétro-compat).
+function resoudreCreneau(body, tz) {
+  const { date, heure_debut, heure_fin } = body || {};
+  const estHHMM = (s) => typeof s === 'string' && /^\d{1,2}:\d{2}$/.test(s);
+  if (date && estHHMM(heure_debut) && estHHMM(heure_fin)) {
+    const debut = murEnUTC(date, heure_debut, tz);
+    const fin = murEnUTC(date, heure_fin, tz);
+    return { debut, fin };
+  }
+  // Rétro-compatibilité : ISO complets.
+  const debut = valideISO(heure_debut) ? new Date(heure_debut) : null;
+  const fin = valideISO(heure_fin) ? new Date(heure_fin) : null;
+  return { debut, fin };
+}
+
 // ---------------------------------------------------------------------------
 // VÉRIFICATION DU CRÉNEAU (logique métier centrale)
 // POST /api/rendezvous/verifier  { heure_debut, heure_fin }
 // ---------------------------------------------------------------------------
 router.post('/verifier', async (req, res) => {
   const uid = req.session.utilisateurId;
-  const { heure_debut, heure_fin } = req.body || {};
+  const tz = fuseauUtilisateur(uid);
+  const { debut: debutD, fin: finD } = resoudreCreneau(req.body, tz);
 
-  if (!valideISO(heure_debut) || !valideISO(heure_fin)) {
+  if (!debutD || !finD) {
     return res.status(400).json({ erreur: 'Dates de début/fin invalides.' });
   }
-  if (new Date(heure_fin) <= new Date(heure_debut)) {
+  if (finD <= debutD) {
     return res.status(400).json({ erreur: "L'heure de fin doit être après l'heure de début." });
   }
   if (!estConnecte(uid)) {
     return res.status(409).json({ erreur: 'GOOGLE_NON_CONNECTE', message: 'Connectez votre Google Calendar.' });
   }
+  const heure_debut = debutD.toISOString();
+  const heure_fin = finD.toISOString();
 
   // 1 & 2. Plage protégée = [debut - 30min, fin + 30min]
   const { plageProtegeeDebut, plageProtegeeFin } = plageProtegee(heure_debut, heure_fin);
@@ -101,15 +127,19 @@ router.post('/verifier', async (req, res) => {
 // ---------------------------------------------------------------------------
 router.post('/', async (req, res) => {
   const uid = req.session.utilisateurId;
-  const { contact_id, heure_debut, heure_fin, notes, forcer } = req.body || {};
+  const tz = fuseauUtilisateur(uid);
+  const { contact_id, notes, forcer } = req.body || {};
+  const { debut: debutD, fin: finD } = resoudreCreneau(req.body, tz);
 
   if (!contact_id) return res.status(400).json({ erreur: 'Un contact est requis.' });
-  if (!valideISO(heure_debut) || !valideISO(heure_fin)) {
+  if (!debutD || !finD) {
     return res.status(400).json({ erreur: 'Dates de début/fin invalides.' });
   }
-  if (new Date(heure_fin) <= new Date(heure_debut)) {
+  if (finD <= debutD) {
     return res.status(400).json({ erreur: "L'heure de fin doit être après l'heure de début." });
   }
+  const heure_debut = debutD.toISOString();
+  const heure_fin = finD.toISOString();
   if (!estConnecte(uid)) {
     return res.status(409).json({ erreur: 'GOOGLE_NON_CONNECTE', message: 'Connectez votre Google Calendar.' });
   }
@@ -146,8 +176,8 @@ router.post('/', async (req, res) => {
     const evenement = {
       summary: titre,
       description: notes || '',
-      start: { dateTime: new Date(heure_debut).toISOString() },
-      end: { dateTime: new Date(heure_fin).toISOString() },
+      start: { dateTime: new Date(heure_debut).toISOString(), timeZone: tz },
+      end: { dateTime: new Date(heure_fin).toISOString(), timeZone: tz },
     };
 
     const cree = await insererEvenement(uid, evenement);

@@ -51,7 +51,26 @@ Calendar si le créneau est libre.
 npm install
 cp .env.example .env   # puis renseigner les valeurs
 npm start              # http://localhost:3000
+npm test               # exécute la suite de tests
 ```
+
+### Déploiement (Docker)
+
+```bash
+# Variables requises : SESSION_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+export SESSION_SECRET=... GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=...
+docker compose up --build
+```
+
+La base SQLite et les sessions sont persistées dans le volume `app-data`.
+
+### Fuseaux horaires
+
+Chaque utilisateur définit son **fuseau horaire** (réglages ⚙️). Les horaires
+saisis sont interprétés comme heure « murale » dans ce fuseau, convertis en
+instant UTC fiable côté serveur (indépendamment du fuseau du serveur ou du
+navigateur), et envoyés à Google Calendar avec le `timeZone` correspondant.
+L'agenda et le tableau de bord affichent également les heures dans ce fuseau.
 
 ### Configuration Google OAuth
 
@@ -89,10 +108,23 @@ db/
 services/
   googleCalendar.js    OAuth + appels Calendar
   creneaux.js          Tampon 30 min, conflits, créneaux libres
+  temps.js             Conversion heure murale ↔ UTC (fuseaux IANA)
 middleware/auth.js     Garde de session
 routes/                auth, google, activites, contacts, rendezvous
 public/                Frontend (index.html, css, js)
+tests/                 Tests (node:test) — logique tampon + fuseaux
+Dockerfile, docker-compose.yml
 ```
+
+## Pages
+
+- **Agenda** — vue calendrier jour/semaine/mois, colorée par activité.
+- **Rendez-vous** — tableau de bord listant les RDV, filtres par statut,
+  activité et recherche ; changement de statut et suppression.
+- **Nouveau rendez-vous** — vérification du créneau + création.
+- **Contacts** — CRUD, filtre par activité, recherche.
+- **Activités** — CRUD, couleur.
+- **Réglages** — nom + fuseau horaire.
 
 ## API (résumé)
 

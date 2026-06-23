@@ -48,6 +48,7 @@
         <span class="logo-mini">📅 Couverture</span>
         <nav class="nav">
           <button class="lien-nav actif" data-page="agenda">Agenda</button>
+          <button class="lien-nav" data-page="rdv">Rendez-vous</button>
           <button class="lien-nav" data-page="nouveau">Nouveau rendez-vous</button>
           <button class="lien-nav" data-page="contacts">Contacts</button>
           <button class="lien-nav" data-page="activites">Activités</button>
@@ -58,6 +59,7 @@
         <button id="btn-connecter-google" class="btn btn-google">Connecter mon Google Calendar</button>
         <button id="btn-deconnecter-google" class="btn btn-secondaire" style="display:none">Délier Google</button>
         <span id="nom-utilisateur" class="nom-user"></span>
+        <button id="btn-reglages" class="btn btn-secondaire" title="Réglages">⚙️</button>
         <button id="btn-logout" class="btn btn-secondaire">Déconnexion</button>
       </div>
     </header>
@@ -74,6 +76,27 @@
           </div>
         </div>
         <div id="calendrier"></div>
+      </section>
+
+      <!-- PAGE RENDEZ-VOUS (tableau de bord) -->
+      <section id="page-rdv" class="page" style="display:none">
+        <div class="barre-page"><h2>Rendez-vous</h2></div>
+        <div class="filtres">
+          <input type="search" id="recherche-rdv" placeholder="Rechercher (contact, activité)…" />
+          <select id="filtre-rdv-statut">
+            <option value="">Tous les statuts</option>
+            <option>Planifié</option><option>Confirmé</option><option>Complété</option><option>Annulé</option>
+          </select>
+          <select id="filtre-rdv-activite"><option value="">Toutes les activités</option></select>
+        </div>
+        <div class="table-conteneur">
+          <table class="table">
+            <thead>
+              <tr><th>Date</th><th>Horaire</th><th>Contact</th><th>Activité</th><th>Statut</th><th></th></tr>
+            </thead>
+            <tbody id="liste-rdv"></tbody>
+          </table>
+        </div>
       </section>
 
       <!-- PAGE NOUVEAU RENDEZ-VOUS -->
