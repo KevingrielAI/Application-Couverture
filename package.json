@@ -1,0 +1,24 @@
+{
+  "name": "application-couverture",
+  "version": "1.0.0",
+  "description": "SaaS de gestion intelligente de rendez-vous avec tampon de trajet et intégration Google Calendar",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "init-db": "node db/init.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "connect-sqlite3": "^0.9.15",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-session": "^1.18.1",
+    "googleapis": "^144.0.0"
+  }
+}

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Application Couverture — Gestion de rendez-vous</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+  <!-- FullCalendar (agenda) -->
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+</head>
+<body>
+
+  <!-- ÉCRAN D'AUTHENTIFICATION -->
+  <div id="ecran-auth" class="ecran-auth">
+    <div class="carte-auth">
+      <h1 class="logo">📅 Couverture</h1>
+      <p class="sous-titre">Gestion intelligente de vos rendez-vous</p>
+
+      <div class="onglets-auth">
+        <button class="onglet-auth actif" data-mode="login">Connexion</button>
+        <button class="onglet-auth" data-mode="register">Inscription</button>
+      </div>
+
+      <form id="form-auth">
+        <div id="champ-nom" class="champ" style="display:none">
+          <label>Nom</label>
+          <input type="text" name="nom" autocomplete="name" />
+        </div>
+        <div class="champ">
+          <label>Email</label>
+          <input type="email" name="email" autocomplete="email" required />
+        </div>
+        <div class="champ">
+          <label>Mot de passe</label>
+          <input type="password" name="mot_de_passe" autocomplete="current-password" required />
+        </div>
+        <div id="erreur-auth" class="message-erreur"></div>
+        <button type="submit" class="btn btn-principal btn-bloc" id="btn-submit-auth">Se connecter</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- APPLICATION -->
+  <div id="app" class="app" style="display:none">
+    <header class="entete">
+      <div class="entete-gauche">
+        <span class="logo-mini">📅 Couverture</span>
+        <nav class="nav">
+          <button class="lien-nav actif" data-page="agenda">Agenda</button>
+          <button class="lien-nav" data-page="nouveau">Nouveau rendez-vous</button>
+          <button class="lien-nav" data-page="contacts">Contacts</button>
+          <button class="lien-nav" data-page="activites">Activités</button>
+        </nav>
+      </div>
+      <div class="entete-droite">
+        <span id="badge-google" class="badge badge-attention">Google non connecté</span>
+        <button id="btn-connecter-google" class="btn btn-google">Connecter mon Google Calendar</button>
+        <button id="btn-deconnecter-google" class="btn btn-secondaire" style="display:none">Délier Google</button>
+        <span id="nom-utilisateur" class="nom-user"></span>
+        <button id="btn-logout" class="btn btn-secondaire">Déconnexion</button>
+      </div>
+    </header>
+
+    <main class="contenu">
+
+      <!-- PAGE AGENDA -->
+      <section id="page-agenda" class="page">
+        <div class="barre-page">
+          <h2>Agenda</h2>
+          <div class="filtres">
+            <label>Activité&nbsp;:</label>
+            <select id="filtre-agenda-activite"><option value="">Toutes</option></select>
+          </div>
+        </div>
+        <div id="calendrier"></div>
+      </section>
+
+      <!-- PAGE NOUVEAU RENDEZ-VOUS -->
+      <section id="page-nouveau" class="page" style="display:none">
+        <div class="barre-page"><h2>Nouveau rendez-vous</h2></div>
+        <div class="grille-rdv">
+          <form id="form-rdv" class="carte">
+            <div class="champ">
+              <label>Contact</label>
+              <select id="rdv-contact" required><option value="">Sélectionner…</option></select>
+            </div>
+            <div class="champ">
+              <label>Date</label>
+              <input type="date" id="rdv-date" required />
+            </div>
+            <div class="ligne-2">
+              <div class="champ">
+                <label>Heure de début</label>
+                <input type="time" id="rdv-debut" step="900" required />
+              </div>
+              <div class="champ">
+                <label>Heure de fin</label>
+                <input type="time" id="rdv-fin" step="900" required />
+              </div>
+            </div>
+            <div class="champ">
+              <label>Notes</label>
+              <textarea id="rdv-notes" rows="3" placeholder="Notes internes…"></textarea>
+            </div>
+            <div class="actions-rdv">
+              <button type="button" id="btn-verifier" class="btn btn-principal">Vérifier la disponibilité</button>
+              <button type="button" id="btn-creer-rdv" class="btn btn-succes" disabled>Créer le rendez-vous</button>
+            </div>
+            <p class="note-tampon">⏱️ Un tampon de 30 minutes est réservé avant et après chaque rendez-vous (temps de trajet).</p>
+          </form>
+
+          <div class="carte" id="resultat-verification">
+            <h3>Vérification</h3>
+            <div id="zone-resultat" class="zone-resultat vide">
+              Renseignez le créneau puis cliquez sur « Vérifier la disponibilité ».
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PAGE CONTACTS -->
+      <section id="page-contacts" class="page" style="display:none">
+        <div class="barre-page">
+          <h2>Contacts</h2>
+          <button id="btn-nouveau-contact" class="btn btn-principal">+ Nouveau contact</button>
+        </div>
+        <div class="filtres">
+          <input type="search" id="recherche-contact" placeholder="Rechercher par nom…" />
+          <select id="filtre-contact-activite"><option value="">Toutes les activités</option></select>
+        </div>
+        <div class="table-conteneur">
+          <table class="table">
+            <thead>
+              <tr><th>Nom</th><th>Email</th><th>Téléphone</th><th>Activité</th><th></th></tr>
+            </thead>
+            <tbody id="liste-contacts"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- PAGE ACTIVITÉS -->
+      <section id="page-activites" class="page" style="display:none">
+        <div class="barre-page">
+          <h2>Activités</h2>
+          <button id="btn-nouvelle-activite" class="btn btn-principal">+ Nouvelle activité</button>
+        </div>
+        <div id="liste-activites" class="grille-activites"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- MODALE GÉNÉRIQUE -->
+  <div id="modale" class="modale" style="display:none">
+    <div class="modale-contenu">
+      <div class="modale-entete">
+        <h3 id="modale-titre"></h3>
+        <button class="btn-fermer" id="modale-fermer">×</button>
+      </div>
+      <div id="modale-corps"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
